@@ -1,7 +1,9 @@
+
 import cv2
 from keras.models import load_model
 import numpy as np
 from keras.layers import DepthwiseConv2D
+
 
 # Custom DepthwiseConv2D to handle the 'groups' argument
 class CustomDepthwiseConv2D(DepthwiseConv2D):
@@ -9,6 +11,7 @@ class CustomDepthwiseConv2D(DepthwiseConv2D):
         if 'groups' in kwargs:
             del kwargs['groups']
         super(CustomDepthwiseConv2D, self).__init__(*args, **kwargs)
+
 
 # Load the model with custom objects
 custom_objects = {'DepthwiseConv2D': CustomDepthwiseConv2D}
@@ -18,7 +21,7 @@ model = load_model('keras_model.h5', custom_objects=custom_objects)
 camera = cv2.VideoCapture(0)
 
 # Grab the labels from the labels.txt file. This will be used later.
-labels = open('labels.txt', 'r').readlines()
+labels = [label.strip() for label in open('labels.txt', 'r').readlines()]
 
 while True:
     # Grab the webcam's image.
@@ -30,27 +33,33 @@ while True:
         break
 
     # Resize the raw image into (224-height, 224-width) pixels.
-    image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_AREA)
-
-    # Show the image in a window
-    cv2.imshow('Webcam Image', image)
+    resized_image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_AREA)
 
     # Make the image a numpy array and reshape it to the model's input shape.
-    image = np.asarray(image, dtype=np.float32).reshape(1, 224, 224, 3)
+    normalized_image = np.asarray(resized_image, dtype=np.float32).reshape(1, 224, 224, 3)
 
     # Normalize the image array
-    image = (image / 127.5) - 1
+    normalized_image = (normalized_image / 127.5) - 1
 
-    # Have the model predict what the current image is. Model.predict
-    # returns an array of percentages.
-    probabilities = model.predict(image)
+    # Have the model predict what the current image is.
+    probabilities = model.predict(normalized_image)
 
-    print(list(probabilities[0]))
+    # Get the label with the highest probability
+    max_prob = max(probabilities[0])
+    if max_prob >= 0.99:
+        predicted_label = labels[np.argmax(probabilities)]
+        # Put the label text on the image
+        cv2.putText(image,
+                    predicted_label,
+                    (10, 30),  # position at which the text will be displayed
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,  # font scale
+                    (0, 255, 0),  # text color (Green in BGR)
+                    2,  # thickness of the text
+                    cv2.LINE_AA)
 
-    # Print the label with the highest probability
-    for predictions in list(probabilities[0]):
-        if predictions >= 0.99:
-            print(labels[np.argmax(probabilities)])
+    # Show the image with the detected label
+    cv2.imshow('Webcam Image', image)
 
     # Listen to the keyboard for presses.
     keyboard_input = cv2.waitKey(1)
@@ -60,4 +69,3 @@ while True:
 
 camera.release()
 cv2.destroyAllWindows()
-
